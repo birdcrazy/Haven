@@ -859,6 +859,46 @@ _formatContent(str) {
     }
   );
 
+  // ── Colors: c#RRGGBB...#c / c#(R,G,B)...#c ──
+  // Run after markdown/auto-links have become placeholders. This lets color
+  // spans be split around links/images without having to parse generated HTML.
+  // The link is therefore restored outside the color spans.
+  const colorSpans = [];
+  const makeColorSpan = (color, text) => {
+    const parts = [];
+    let last = 0;
+
+    // MDLINK/AUTOLINK placeholders are deliberately not colorized.
+    const linkPlaceholderRe = /\x00(?:MDLINK|AUTOLINK)_\d+\x00/g;
+    let match;
+    while ((match = linkPlaceholderRe.exec(text)) !== null) {
+      if (match.index > last) {
+        const idx = colorSpans.length;
+        colorSpans.push(color);
+        parts.push(`\x00COLOR_START_${idx}\x00` + text.slice(last, match.index) + `\x00COLOR_END_${idx}\x00`);
+      }
+
+      // Leave the link/image placeholder completely outside the color span.
+      parts.push(match[0]);
+      last = match.index + match[0].length;
+    }
+
+    if (last < text.length) {
+      const idx = colorSpans.length;
+      colorSpans.push(color);
+      parts.push(`\x00COLOR_START_${idx}\x00` + text.slice(last) + `\x00COLOR_END_${idx}\x00`);
+    }
+
+    return parts.join('');
+  };
+
+  html = html.replace(/c#([0-9a-fA-F]{6})([\s\S]+?)#c/g, (_, color, text) => makeColorSpan(`#${color}`, text));
+
+  html = html.replace(/c#\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)([\s\S]+?)#c/g, (full, r, g, b, text) => {
+    if (r > 255 || g > 255 || b > 255) return full;
+    return makeColorSpan(`rgb(${r},${g},${b})`, text);
+  });
+
   // Render @mentions with highlight (negative lookbehind prevents matching inside email addresses).
   // Only style as a mention when the matched name resolves to a real
   // channel member (login name OR display name), or to the current user.
@@ -1000,15 +1040,6 @@ _formatContent(str) {
       });
     }
   }
-
-  // Render c#RRGGBB...#c color spans (HEX color code)
-  html = html.replace(/c#([0-9a-fA-F]{6})([\s\S]+?)#c/g, '<span style="color:#$1">$2</span>');
-
-  // Render c#(R,G,B)...#c color spans (RGB color code)
-  html = html.replace(/c#\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)([\s\S]+?)#c/g, (_, r, g, b, text) => {
-    if (r > 255 || g > 255 || b > 255) return _;
-    return `<span style="color:rgb(${r},${g},${b})">${text}</span>`;
-  });
 
   // Render spoilers (||text||) — CSP-safe, uses delegated click handler
   html = html.replace(/\|\|(.+?)\|\|/g, '<span class="spoiler">$1</span>');
@@ -1190,6 +1221,13 @@ _formatContent(str) {
     const langLabel = block.lang ? `<span class="code-block-lang">${this._escapeHtml(block.lang)}</span>` : '';
     const rendered = `<div class="code-block"${langAttr}>${langLabel}<pre><code>${escaped}</code></pre></div>`;
     html = html.replace(`\x00CODEBLOCK_${idx}\x00`, rendered);
+  });
+
+  // ── Restore color spans ──
+  colorSpans.forEach((color, idx) => {
+    const colorStyle = `color:${this._escapeHtml(color)}`;
+    html = html.replace(`\x00COLOR_START_${idx}\x00`, () => `<span style="${colorStyle}">`);
+    html = html.replace(`\x00COLOR_END_${idx}\x00`, () => '</span>');
   });
 
   // ── Restore markdown links/images ──
