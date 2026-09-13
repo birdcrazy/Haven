@@ -1001,6 +1001,15 @@ _formatContent(str) {
     }
   }
 
+  // Render c#RRGGBB...#c color spans (HEX color code)
+  html = html.replace(/c#([0-9a-fA-F]{6})([\s\S]+?)#c/g, '<span style="color:#$1">$2</span>');
+
+  // Render c#(R,G,B)...#c color spans (RGB color code)
+  html = html.replace(/c#\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)([\s\S]+?)#c/g, (_, r, g, b, text) => {
+    if (r > 255 || g > 255 || b > 255) return _;
+    return `<span style="color:rgb(${r},${g},${b})">${text}</span>`;
+  });
+
   // Render spoilers (||text||) — CSP-safe, uses delegated click handler
   html = html.replace(/\|\|(.+?)\|\|/g, '<span class="spoiler">$1</span>');
 
@@ -1051,15 +1060,6 @@ _formatContent(str) {
     const idx = blockquotes.length;
     blockquotes.push(`${pre}<blockquote class="chat-blockquote">${authorHtml}<div class="chat-blockquote-body">${textHtml}</div></blockquote>`);
     return `\x00BLOCKQUOTE_${idx}\x00`;
-  });
-
-  // Render c#RRGGBB...#c color spans (HEX color code)
-  html = html.replace(/c#([0-9a-fA-F]{6})([\s\S]+?)#c/g, '<span style="color:#$1">$2</span>');
-
-  // Render c#(R,G,B)...#c color spans (RGB color code)
-  html = html.replace(/c#\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)([\s\S]+?)#c/g, (_, r, g, b, text) => {
-    if (r > 255 || g > 255 || b > 255) return _;
-    return `<span style="color:rgb(${r},${g},${b})">${text}</span>`;
   });
 
   // ── Headings: # H1, ## H2, ### H3 at start of line ──
