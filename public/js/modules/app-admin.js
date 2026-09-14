@@ -2514,7 +2514,7 @@ _handleMarkdownShortcuts(inputEl, event) {
   // Text color (Ctrl/Cmd + Shift + F) (F for font, since c for code is already taken)
   if (event.shiftKey && key === 'f') {
     const colorPrefix = 'c#(51,153,255)'
-    if (!this._wrapSelectedText(input, colorPrefix, '#c')) return false;
+    if (!this._wrapSelectedText(input, colorPrefix, ';c')) return false;
 
     // Move cursor to just before ")" so the user can edit the color
     const cursorPos = input.selectionStart + (colorPrefix.length - 1);
