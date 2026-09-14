@@ -859,7 +859,7 @@ _formatContent(str) {
     }
   );
 
-  // ── Colors: c#RRGGBB...;c / c#(R,G,B)...;c ──
+  // ── Colors: c#RRGGBB...#c / c#(R,G,B)...#c ──
   // Run after markdown/auto-links have become placeholders. This lets color
   // spans be split around links/images without having to parse generated HTML.
   // The link is therefore restored outside the color spans.
@@ -892,9 +892,9 @@ _formatContent(str) {
     return parts.join('');
   };
 
-  html = html.replace(/c#([0-9a-fA-F]{6})([\s\S]+?);c/g, (_, color, text) => makeColorSpan(`#${color}`, text));
+  html = html.replace(/c#([0-9a-fA-F]{6})([\s\S]+?)#c/g, (_, color, text) => makeColorSpan(`#${color}`, text));
 
-  html = html.replace(/c#\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)([\s\S]+?);c/g, (full, r, g, b, text) => {
+  html = html.replace(/c#\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)([\s\S]+?)#c/g, (full, r, g, b, text) => {
     if (r > 255 || g > 255 || b > 255) return full;
     return makeColorSpan(`rgb(${r},${g},${b})`, text);
   });
