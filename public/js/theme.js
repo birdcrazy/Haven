@@ -1590,7 +1590,7 @@ function _getAccentTextColor() {
   const luminance = (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
   const contrastBlack = (luminance + 0.05) / 0.05;
   const contrastWhite = 1.05 / (luminance + 0.05);
-  return contrastBlack > contrastWhite * 1.1 ? '#000' : '#fff';
+  return contrastBlack > contrastWhite * 1.06 ? '#000' : '#fff';
 }
 
 function _themeHasExplicitAccentText() {
