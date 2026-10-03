@@ -76,11 +76,12 @@ function applyCustomVars(palette) {
   // the next frame, treating them as a single batched invalidation.
   const root = document.documentElement.style;
   for (const [k, v] of Object.entries(palette)) root.setProperty(k, v);
+  _updateAccentText();
 }
 function clearCustomVars() {
   if (_themeStyleEl) { _themeStyleEl.textContent = ''; }
   // Also remove any leftover inline custom properties (legacy path)
-  const keys = ['--accent','--accent-hover','--accent-dim','--accent-glow',
+  const keys = ['--accent', ,'--accent-hover','--accent-dim','--accent-glow', '--accent-text',
     '--bg-primary','--bg-secondary','--bg-tertiary','--bg-hover','--bg-active',
     '--bg-input','--bg-card','--text-primary','--text-secondary','--text-muted',
     '--text-link','--border','--border-light','--success','--danger','--warning',
@@ -1565,6 +1566,124 @@ function _isFileThemeCompatible(meta) {
     && meta.compatibility !== 'unsupported';
 }
 
+function _getAccentTextColor() {
+  const accent = getComputedStyle(document.documentElement)
+    .getPropertyValue('--accent')
+    .trim();
+
+  const match = accent.match(/^#([0-9a-f]{6})$/i);
+  if (!match) return null;
+
+  const hex = match[1];
+
+  const rgb = [
+    parseInt(hex.slice(0, 2), 16),
+    parseInt(hex.slice(2, 4), 16),
+    parseInt(hex.slice(4, 6), 16)
+  ];
+
+  const linear = rgb.map(function(value) {
+    const channel = value / 255;
+    return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+  });
+
+  const luminance = (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+  const contrastBlack = (luminance + 0.05) / 0.05;
+  const contrastWhite = 1.05 / (luminance + 0.05);
+  return contrastBlack > contrastWhite ? '#000' : '#fff';
+}
+
+function _themeHasExplicitAccentText() {
+  const theme = document.documentElement.getAttribute('data-theme');
+  if (!theme) return false;
+
+  function hasAccentText(rules) {
+    if (!rules) return false;
+
+    for (const rule of rules) {
+      if (rule.style && rule.selectorText) {
+        const selectors = rule.selectorText.split(',');
+
+        for (const selector of selectors) {
+          try {
+            if (document.documentElement.matches(selector.trim()) && rule.style.getPropertyValue('--accent-text').trim()) {
+              return true;
+            }
+          } catch (e) {
+            // Ignore selectors that cannot be evaluated.
+          }
+        }
+      }
+
+      if (rule.cssRules && hasAccentText(rule.cssRules)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  for (const sheet of document.styleSheets) {
+    try {
+      if (hasAccentText(sheet.cssRules)) return true;
+    } catch (e) {
+      // Ignore inaccessible cross-origin stylesheets.
+    }
+  }
+  return false;
+}
+
+function _updateAccentText() {
+  const root = document.documentElement;
+
+  // Remove a value previously calculated by JavaScript.
+  root.style.removeProperty('--accent-text');
+
+  // Explicit theme CSS always wins.
+  if (_themeHasExplicitAccentText()) return;
+
+  const color = _getAccentTextColor();
+  if (color) {
+    root.style.setProperty('--accent-text', color);
+  }
+}
+
+function _updateAccentTextForFileTheme(linkEl) {
+  const root = document.documentElement;
+  root.style.removeProperty('--accent-text');
+
+  if (!linkEl || !linkEl.sheet) {
+    const color = _getAccentTextColor();
+    if (color) root.style.setProperty('--accent-text', color);
+    return;
+  }
+
+  function hasAccentText(rules) {
+    if (!rules) return false;
+    for (const rule of rules) {
+      if (rule.style && rule.style.getPropertyValue('--accent-text').trim()) {
+        return true;
+      }
+      if (rule.cssRules && hasAccentText(rule.cssRules)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  let explicit = false;
+  try {
+    explicit = hasAccentText(linkEl.sheet.cssRules);
+  } catch (e) {
+    // If the stylesheet cannot be inspected, fall back to calculated text.
+  }
+  if (!explicit) {
+    const color = _getAccentTextColor();
+    if (color) {
+      root.style.setProperty('--accent-text', color);
+    }
+  }
+}
+
 function initThemeSwitcher(containerId, socket) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -1623,11 +1742,13 @@ function initThemeSwitcher(containerId, socket) {
         if (rgbEditor && rgbEditor._hide) rgbEditor._hide();
       } else if (theme === 'rgb') {
         clearCustomVars();
+        _updateAccentText();
         startRgbCycle();
         if (customEditor && customEditor._hide) customEditor._hide();
         if (rgbEditor && rgbEditor._show) rgbEditor._show();
       } else {
         clearCustomVars();
+        _updateAccentText();
         if (customEditor && customEditor._hide) customEditor._hide();
         if (rgbEditor && rgbEditor._hide) rgbEditor._hide();
       }
@@ -1695,6 +1816,7 @@ function applyThemeFromServer(theme, persist = true, syncFallback = false) {
     if (editor && editor._show) editor._show();
   } else {
     clearCustomVars();
+    _updateAccentText();
     const customEditor = document.getElementById('custom-theme-editor');
     if (customEditor && customEditor._hide) customEditor._hide();
     const rgbEditor = document.getElementById('rgb-theme-editor');
@@ -1730,6 +1852,8 @@ function applyPublishedThemeBase(file, persist = true, meta = null) {
   linkEl.rel = 'stylesheet';
   linkEl.href = `/themes/${encodeURIComponent(file)}?_=${Date.now()}`;
   linkEl.id = `haven-theme-${file}`;
+  linkEl.onload = () => { _updateAccentTextForFileTheme(linkEl); };
+  linkEl.onerror = () => { _updateAccentText(); };
   document.head.appendChild(linkEl);
 
   // 'haven' is the stable layout base; the injected sheet loads after it and

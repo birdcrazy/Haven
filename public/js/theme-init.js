@@ -112,7 +112,17 @@
       var _themeFile = t.slice(5);
       var _cachedTheme = _themeCompat ? _themeCompat.getCachedTheme(_themeFile) : null;
       if (_cachedTheme && _cachedTheme.compatible) {
-        _injectEarlyTheme(_themeFile);
+        _injectEarlyTheme(_themeFile, function() {
+          var root = document.documentElement;
+          root.style.removeProperty('--accent-text');
+
+          if (!_themeHasExplicitAccentText()) {
+            var color = _accentTextColor();
+            if (color) {
+              root.style.setProperty('--accent-text', color);
+            }
+          }
+        });
       } else {
         // Validate an uncached theme immediately. Hide the base briefly so a
         // first load does not flash Haven before the compatible CSS arrives.
@@ -174,6 +184,31 @@
     if (defaults[t]) fxList = [t];
   }
   if (fxList.indexOf('crt') >= 0) document.documentElement.classList.add('fx-crt');
+
+  function _accentTextColor() {
+    var accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    var match = accent.match(/^#([0-9a-f]{6})$/i);
+    if (!match) return null;
+
+    var hex = match[1];
+    var rgb = [
+      parseInt(hex.slice(0, 2), 16),
+      parseInt(hex.slice(2, 4), 16),
+      parseInt(hex.slice(4, 6), 16)
+    ];
+
+    var linear = rgb.map(function(value) {
+      var channel = value / 255;
+      return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+    });
+
+    var luminance = (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+    var contrastBlack = (luminance + 0.05) / 0.05;
+    var contrastWhite = 1.05 / (luminance + 0.05);
+
+    return contrastBlack > contrastWhite ? '#000' : '#fff';
+  }
+
   // Apply custom theme variables if custom theme is active
   if (t === 'custom') {
     try {
@@ -212,5 +247,65 @@
   // RGB theme: set a neutral dark bg immediately; the cycle starts once theme.js loads
   if (t === 'rgb') {
     document.documentElement.setAttribute('data-theme', 'haven');
+  }
+
+  function _themeHasExplicitAccentText() {
+    var theme = document.documentElement.getAttribute('data-theme');
+    if (!theme) return false;
+
+    function hasAccentText(rules) {
+      if (!rules) return false;
+
+      for (var i = 0; i < rules.length; i++) {
+        var rule = rules[i];
+
+        // Normal CSS rule
+        if (rule.style && rule.selectorText) {
+          var selectors = rule.selectorText.split(',');
+
+          for (var j = 0; j < selectors.length; j++) {
+            var selector = selectors[j].trim();
+            try {
+              if (
+                document.documentElement.matches(selector) &&
+                rule.style.getPropertyValue('--accent-text').trim()
+              ) {
+                return true;
+              }
+            } catch (e) {
+              // Ignore selectors that cannot be evaluated.
+            }
+          }
+        }
+
+        // Recurse into @media, @supports, etc.
+        if (rule.cssRules && hasAccentText(rule.cssRules)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    for (var i = 0; i < document.styleSheets.length; i++) {
+      var rules;
+      try {
+        rules = document.styleSheets[i].cssRules;
+      } catch (e) {
+        continue;
+      }
+      if (hasAccentText(rules)) return true;
+    }
+    return false;
+  }
+
+  // Remove any previously calculated inline value so explicit CSS
+  // declarations can take effect.
+  var root = document.documentElement;
+  root.style.removeProperty('--accent-text');
+  if (!_themeHasExplicitAccentText()) {
+    var color = _accentTextColor();
+    if (color) {
+      root.style.setProperty('--accent-text', color);
+    }
   }
 })();
